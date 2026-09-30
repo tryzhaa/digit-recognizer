@@ -7,19 +7,30 @@ pl_ is added before <arch> with --pseudo). predict.py ensembles saved models wit
 and writes test_probs.pt, which --pseudo uses: confident test predictions become extra
 training images (never validation images).
 """
-import argparse, math, os
+import argparse, glob, math, os
 import numpy as np, pandas as pd, torch, torch.nn as nn, torch.nn.functional as F
 
 dev = torch.device('mps' if torch.backends.mps.is_available() else 'cuda' if torch.cuda.is_available() else 'cpu')
-DATA = '/kaggle/input/digit-recognizer' if os.path.isdir('/kaggle/input/digit-recognizer') else 'data'
+def find_data():
+    """Local data/, or wherever Kaggle mounted the competition files under /kaggle/input."""
+    for f in ['data/train.csv', *sorted(glob.glob('/kaggle/input/**/train.csv', recursive=True))]:
+        if os.path.exists(f) and os.path.exists(f.replace('train.csv', 'test.csv')): return os.path.dirname(f)
+    raise FileNotFoundError('train.csv/test.csv not found in data/ or /kaggle/input. '
+                            'On Kaggle: + Add Input -> Competitions -> Digit Recognizer.')
+DATA = None
+
+def data_dir():
+    global DATA
+    DATA = DATA or find_data()
+    return DATA
 
 def load_train():
-    df = pd.read_csv(f'{DATA}/train.csv')
+    df = pd.read_csv(f'{data_dir()}/train.csv')
     x = torch.tensor(df.drop(columns='label').values, dtype=torch.float32).view(-1, 1, 28, 28) / 255
     return x, torch.tensor(df['label'].values)
 
 def load_test():
-    return torch.tensor(pd.read_csv(f'{DATA}/test.csv').values, dtype=torch.float32).view(-1, 1, 28, 28) / 255
+    return torch.tensor(pd.read_csv(f'{data_dir()}/test.csv').values, dtype=torch.float32).view(-1, 1, 28, 28) / 255
 
 MEAN, STD = 0.1307, 0.3081
 norm = lambda x: (x - MEAN) / STD

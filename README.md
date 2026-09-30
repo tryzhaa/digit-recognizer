@@ -17,7 +17,7 @@ Leave out `--full` to hold back 10% for validation (prints `val_acc`).
 
 ## On Kaggle (free GPU)
 
-1. Competition page → **Code → New Notebook**. The data is attached at `/kaggle/input/digit-recognizer/`, and `train.py` finds it there automatically.
+1. Competition page → **Code → New Notebook**. Check the data panel on the right lists Digit Recognizer; if not, **+ Add Input → Competitions → Digit Recognizer**. `train.py` finds the files anywhere under `/kaggle/input`.
 2. Notebook settings: **Accelerator → GPU**, **Internet → On** (both need a phone-verified account).
 3. Run these cells:
 
