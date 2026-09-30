@@ -1,0 +1,5 @@
+.venv/
+data/
+models/
+submission.csv
+__pycache__/
