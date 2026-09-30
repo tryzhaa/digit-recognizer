@@ -1,18 +1,25 @@
 """Train a CNN ensemble on Kaggle Digit Recognizer and write submission.csv.
 
-Usage: python train.py [--models 5] [--epochs 30] [--full]
-Models are saved to models/ (cnn_<seed>.pt, or full_<seed>.pt with --full);
-predict.py ensembles all saved models with TTA.
+Usage: python train.py [--arch cnn|wide|res] [--models 5] [--first-seed 0] [--epochs 30] [--full]
+                      [--pseudo test_probs.pt [--pseudo-thresh 0.9]]
+Models are saved to models/ (<arch>_<seed>.pt, or full_<arch>_<seed>.pt with --full;
+pl_ is added before <arch> with --pseudo). predict.py ensembles saved models with TTA
+and writes test_probs.pt, which --pseudo uses: confident test predictions become extra
+training images (never validation images).
 """
 import argparse, math, os
 import numpy as np, pandas as pd, torch, torch.nn as nn, torch.nn.functional as F
 
 dev = torch.device('mps' if torch.backends.mps.is_available() else 'cuda' if torch.cuda.is_available() else 'cpu')
+DATA = '/kaggle/input/digit-recognizer' if os.path.isdir('/kaggle/input/digit-recognizer') else 'data'
 
 def load_train():
-    df = pd.read_csv('data/train.csv')
+    df = pd.read_csv(f'{DATA}/train.csv')
     x = torch.tensor(df.drop(columns='label').values, dtype=torch.float32).view(-1, 1, 28, 28) / 255
     return x, torch.tensor(df['label'].values)
+
+def load_test():
+    return torch.tensor(pd.read_csv(f'{DATA}/test.csv').values, dtype=torch.float32).view(-1, 1, 28, 28) / 255
 
 MEAN, STD = 0.1307, 0.3081
 norm = lambda x: (x - MEAN) / STD
@@ -32,13 +39,40 @@ def augment(x, deg=10, shift=0.1, zoom=0.1, g=None):
 def block(i, o): return [nn.Conv2d(i, o, 3, padding=1, bias=False), nn.BatchNorm2d(o), nn.ReLU()]
 
 class CNN(nn.Module):
+    def __init__(self, w=32):
+        super().__init__()
+        self.f = nn.Sequential(*block(1, w), *block(w, w), nn.MaxPool2d(2), nn.Dropout(0.25),
+                               *block(w, 2 * w), *block(2 * w, 2 * w), nn.MaxPool2d(2), nn.Dropout(0.25),
+                               *block(2 * w, 4 * w), nn.AdaptiveAvgPool2d(1), nn.Flatten(),
+                               nn.Dropout(0.4), nn.Linear(4 * w, 10))
+    def forward(self, x): return self.f(norm(x))
+
+class ResBlock(nn.Module):
+    """Two 3x3 convs plus a shortcut that carries the input straight through."""
+    def __init__(self, i, o, stride=1):
+        super().__init__()
+        self.f = nn.Sequential(nn.Conv2d(i, o, 3, stride, 1, bias=False), nn.BatchNorm2d(o), nn.ReLU(),
+                               nn.Conv2d(o, o, 3, 1, 1, bias=False), nn.BatchNorm2d(o))
+        self.short = nn.Identity() if i == o and stride == 1 else \
+            nn.Sequential(nn.Conv2d(i, o, 1, stride, bias=False), nn.BatchNorm2d(o))
+    def forward(self, x): return F.relu(self.f(x) + self.short(x))
+
+class ResNet(nn.Module):
     def __init__(self):
         super().__init__()
-        self.f = nn.Sequential(*block(1, 32), *block(32, 32), nn.MaxPool2d(2), nn.Dropout(0.25),
-                               *block(32, 64), *block(64, 64), nn.MaxPool2d(2), nn.Dropout(0.25),
-                               *block(64, 128), nn.AdaptiveAvgPool2d(1), nn.Flatten(),
-                               nn.Dropout(0.4), nn.Linear(128, 10))
+        self.f = nn.Sequential(*block(1, 32), ResBlock(32, 32), ResBlock(32, 64, 2), ResBlock(64, 64),
+                               ResBlock(64, 128, 2), ResBlock(128, 128), nn.AdaptiveAvgPool2d(1),
+                               nn.Flatten(), nn.Dropout(0.3), nn.Linear(128, 10))
     def forward(self, x): return self.f(norm(x))
+
+ARCHS = {'cnn': CNN, 'wide': lambda: CNN(48), 'res': ResNet}
+
+def load_model(path):
+    """Checkpoints are {'arch', 'state'}; older ones are a bare CNN state_dict."""
+    ck = torch.load(path, map_location=dev)
+    arch, state = (ck['arch'], ck['state']) if 'arch' in ck else ('cnn', ck)
+    m = ARCHS[arch]().to(dev); m.load_state_dict(state)
+    return m
 
 @torch.no_grad()
 def predict(model, x, tta=False):
@@ -54,13 +88,15 @@ def predict(model, x, tta=False):
         out.append(p.cpu())
     return torch.cat(out)
 
-def train_one(seed, x, y, epochs, val_frac=0.1):
+def train_one(seed, x, y, epochs, val_frac=0.1, arch='cnn', extra=None):
     torch.manual_seed(seed); np.random.seed(seed)
     idx = torch.randperm(len(x))
     nv = int(len(x) * val_frac)
     va, tr = idx[:nv], idx[nv:]
-    xtr, ytr, xva, yva = x[tr].to(dev), y[tr].to(dev), x[va], y[va]
-    model = CNN().to(dev)
+    xtr, ytr, xva, yva = x[tr], y[tr], x[va], y[va]
+    if extra is not None: xtr, ytr = torch.cat([xtr, extra[0]]), torch.cat([ytr, extra[1]])
+    xtr, ytr = xtr.to(dev), ytr.to(dev)
+    model = ARCHS[arch]().to(dev)
     bs = 128
     steps = epochs * math.ceil(len(xtr) / bs)
     opt = torch.optim.AdamW(model.parameters(), lr=2e-3, weight_decay=1e-4)
@@ -75,25 +111,37 @@ def train_one(seed, x, y, epochs, val_frac=0.1):
             loss = loss_fn(model(augment(xtr[b])), ytr[b])
             opt.zero_grad(); loss.backward(); opt.step(); sched.step()
         if not nv:  # full-data run: no holdout, keep the last epoch
-            print(f'seed {seed} epoch {ep + 1}/{epochs} (full data)', flush=True)
+            print(f'{arch} seed {seed} epoch {ep + 1}/{epochs} (full data)', flush=True)
             continue
         acc = (predict(model, xva).argmax(1) == yva).float().mean().item()
         if acc >= best: best, best_state = acc, {k: v.clone() for k, v in model.state_dict().items()}
-        print(f'seed {seed} epoch {ep + 1}/{epochs} val_acc {acc:.4f}', flush=True)
+        print(f'{arch} seed {seed} epoch {ep + 1}/{epochs} val_acc {acc:.4f}', flush=True)
     if nv:
         model.load_state_dict(best_state)
-        print(f'seed {seed} best val_acc {best:.4f}', flush=True)
+        print(f'{arch} seed {seed} best val_acc {best:.4f}', flush=True)
     return model
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('--models', type=int, default=5)
     ap.add_argument('--epochs', type=int, default=30)
-    ap.add_argument('--full', action='store_true', help='train on all data (no validation) -> models/full_<seed>.pt')
+    ap.add_argument('--full', action='store_true', help='train on all data (no validation) -> models/full_<arch>_<seed>.pt')
+    ap.add_argument('--arch', choices=ARCHS, default='cnn')
+    ap.add_argument('--first-seed', type=int, default=0)
+    ap.add_argument('--pseudo', help='test_probs.pt from predict.py: add confident test predictions to training')
+    ap.add_argument('--pseudo-thresh', type=float, default=0.9,
+                    help='min ensemble confidence; label smoothing caps it near 0.91, so 0.9 = confident')
     args = ap.parse_args()
     os.makedirs('models', exist_ok=True)
     x, y = load_train()
-    for seed in range(args.models):
-        path = f"models/{'full' if args.full else 'cnn'}_{seed}.pt"
+    extra = None
+    if args.pseudo:
+        conf, lab = torch.load(args.pseudo).max(1)
+        keep = conf >= args.pseudo_thresh
+        extra = (load_test()[keep], lab[keep])
+        print(f'pseudo-labels: {int(keep.sum())} of {len(keep)} test images at conf >= {args.pseudo_thresh}', flush=True)
+    for seed in range(args.first_seed, args.first_seed + args.models):
+        path = f"models/{'full_' if args.full else ''}{'pl_' if args.pseudo else ''}{args.arch}_{seed}.pt"
         if os.path.exists(path): print('skip', path); continue
-        torch.save(train_one(seed, x, y, args.epochs, val_frac=0 if args.full else 0.1).state_dict(), path)
+        m = train_one(seed, x, y, args.epochs, val_frac=0 if args.full else 0.1, arch=args.arch, extra=extra)
+        torch.save({'arch': args.arch, 'state': m.state_dict()}, path)

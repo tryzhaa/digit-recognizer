@@ -3,3 +3,5 @@ data/
 models/
 submission.csv
 __pycache__/
+test_probs.pt
+submissions/
