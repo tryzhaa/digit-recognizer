@@ -151,7 +151,7 @@ if __name__ == '__main__':
     ap.add_argument('--full', action='store_true', help='train on all data (no validation) -> models/full_<arch>_<seed>.pt')
     ap.add_argument('--arch', choices=ARCHS, default='cnn')
     ap.add_argument('--first-seed', type=int, default=0)
-    ap.add_argument('--pseudo', help='test_probs.pt from predict.py: add confident test predictions to training')
+    ap.add_argument('--pseudo', help='test_probs.pt (or .csv, 10 columns) from predict.py: add confident test predictions to training')
     ap.add_argument('--pseudo-thresh', type=float, default=0.9,
                     help='min ensemble confidence; label smoothing caps it near 0.91, so 0.9 = confident')
     args = ap.parse_args()
@@ -159,7 +159,10 @@ if __name__ == '__main__':
     x, y = load_train()
     extra = None
     if args.pseudo:
-        conf, lab = torch.load(args.pseudo).max(1)
+        assert os.path.isfile(args.pseudo), f'--pseudo file not found: {args.pseudo!r}'
+        teacher = torch.tensor(pd.read_csv(args.pseudo).values, dtype=torch.float32) \
+            if args.pseudo.endswith('.csv') else torch.load(args.pseudo)
+        conf, lab = teacher.max(1)
         keep = conf >= args.pseudo_thresh
         extra = (load_test()[keep], lab[keep])
         print(f'pseudo-labels: {int(keep.sum())} of {len(keep)} test images at conf >= {args.pseudo_thresh}', flush=True)
