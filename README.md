@@ -1,7 +1,7 @@
 # Digit Recognizer
 
 CNN ensemble for Kaggle's [Digit Recognizer](https://www.kaggle.com/competitions/digit-recognizer/).
-Best public score so far: **0.99653** (5 CNN + 3 wide CNN + 3 ResNet, all trained on full data).
+Best public score so far: **0.99703** (8 big CNNs holding half the vote, 15 CNN / wide CNN / ResNet models the other half; all trained on full data).
 
 ## Local
 
@@ -10,6 +10,7 @@ Put `train.csv` and `test.csv` in `data/`, then:
 ```sh
 python train.py --full --arch wide --models 3      # arch: cnn | wide | res | big
 python predict.py                                   # all models/*.pt -> submission.csv + test_probs.pt
+python predict.py 'models/full_*.pt' --weight big=0.5   # best: big models get half the vote
 python train.py --full --pseudo test_probs.pt --arch res --models 3 --first-seed 10 --epochs 20
 ```
 
