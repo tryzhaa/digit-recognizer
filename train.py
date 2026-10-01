@@ -1,6 +1,6 @@
 """Train a CNN ensemble on Kaggle Digit Recognizer and write submission.csv.
 
-Usage: python train.py [--arch cnn|wide|res] [--models 5] [--first-seed 0] [--epochs 30] [--full]
+Usage: python train.py [--arch cnn|wide|res|big] [--models 5] [--first-seed 0] [--epochs 30] [--full]
                       [--pseudo test_probs.pt [--pseudo-thresh 0.9]]
 Models are saved to models/ (<arch>_<seed>.pt, or full_<arch>_<seed>.pt with --full;
 pl_ is added before <arch> with --pseudo). predict.py ensembles saved models with TTA
@@ -76,7 +76,19 @@ class ResNet(nn.Module):
                                nn.Flatten(), nn.Dropout(0.3), nn.Linear(128, 10))
     def forward(self, x): return self.f(norm(x))
 
-ARCHS = {'cnn': CNN, 'wide': lambda: CNN(48), 'res': ResNet}
+def cbr(i, o, k, stride=1, pad=0): return [nn.Conv2d(i, o, k, stride, pad, bias=False), nn.BatchNorm2d(o), nn.ReLU()]
+
+class Big(nn.Module):
+    """Strided-conv CNN in the style of strong public Digit Recognizer solutions, widened.
+    28 -> 26 -> 24 -> 12 (5x5 stride 2) -> 10 -> 8 -> 4 (5x5 stride 2) -> 1 (4x4)."""
+    def __init__(self, w=64):
+        super().__init__()
+        self.f = nn.Sequential(*cbr(1, w, 3), *cbr(w, w, 3), *cbr(w, w, 5, 2, 2), nn.Dropout(0.4),
+                               *cbr(w, 2 * w, 3), *cbr(2 * w, 2 * w, 3), *cbr(2 * w, 2 * w, 5, 2, 2), nn.Dropout(0.4),
+                               *cbr(2 * w, 4 * w, 4), nn.Flatten(), nn.Dropout(0.4), nn.Linear(4 * w, 10))
+    def forward(self, x): return self.f(norm(x))
+
+ARCHS = {'cnn': CNN, 'wide': lambda: CNN(48), 'res': ResNet, 'big': Big}
 
 def load_model(path):
     """Checkpoints are {'arch', 'state'}; older ones are a bare CNN state_dict."""

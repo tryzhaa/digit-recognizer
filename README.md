@@ -8,7 +8,7 @@ Best public score so far: **0.99653** (5 CNN + 3 wide CNN + 3 ResNet, all traine
 Put `train.csv` and `test.csv` in `data/`, then:
 
 ```sh
-python train.py --full --arch wide --models 3      # arch: cnn | wide | res
+python train.py --full --arch wide --models 3      # arch: cnn | wide | res | big
 python predict.py                                   # all models/*.pt -> submission.csv + test_probs.pt
 python train.py --full --pseudo test_probs.pt --arch res --models 3 --first-seed 10 --epochs 20
 ```
@@ -32,6 +32,12 @@ Leave out `--full` to hold back 10% for validation (prints `val_acc`).
 !python train.py --full --arch res --models 3
 !python predict.py
 !cp submission.csv /kaggle/working/
+```
+
+   Strongest single design (1.3M parameters; best on a GPU):
+
+```python
+!python train.py --full --arch big --models 3 --first-seed 30 --epochs 45
 ```
 
 4. For long runs, use **Save Version → Save & Run All**. Everything in `/kaggle/working/` (including `digit-recognizer/models/`) is kept as the version's output, and `submission.csv` can be submitted from there.
