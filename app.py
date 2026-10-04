@@ -104,7 +104,7 @@ def predict_digit(image_array, models, device):
     # Create confidence dict for all digits
     confidence_dict = {str(i): float(probs[i]) for i in range(10)}
 
-    return f"**{pred}** ({confidence*100:.1f}% confident)", confidence_dict
+    return f"{pred}  ({confidence*100:.1f}% confident)", confidence_dict
 
 
 def create_demo(models, device):
