@@ -1,7 +1,5 @@
 .venv/
 data/
-models/full_big_*.pt
-models/full_pl_big_*.pt
 models/cnn_*.pt
 models/res_*.pt
 models/wide_*.pt
