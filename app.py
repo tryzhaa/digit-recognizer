@@ -50,7 +50,9 @@ def predict_digit(image_array, models, device):
 
     # Gradio 4.x Sketchpad returns a dict with 'composite' key
     if isinstance(image_array, dict):
-        image_array = image_array.get('composite') or image_array.get('layers', [None])[0]
+        composite = image_array.get('composite')
+        layers = image_array.get('layers', [])
+        image_array = composite if composite is not None else (layers[0] if layers else None)
     if image_array is None:
         return "Draw a digit first", {}
 
