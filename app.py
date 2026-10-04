@@ -61,6 +61,22 @@ HEAD = """
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<script>
+  // Gradio resolves __theme server-side, and its image editor defaults the
+  // canvas fill to dark, painting #27272a around the drawing surface. Asking
+  // for the light mode keeps that fill white so the pad is one sheet of paper;
+  // the page itself is dark from our own CSS, independent of this flag.
+  // It has to be a real navigation: the server never sees a client-side rewrite.
+  (function () {
+    try {
+      if (!/[?&]__theme=/.test(window.location.search)) {
+        var u = new URL(window.location.href);
+        u.searchParams.set("__theme", "light");
+        window.location.replace(u.toString());
+      }
+    } catch (e) {}
+  })();
+</script>
 """
 
 FORCE_DARK = """
@@ -251,7 +267,9 @@ footer,
 /* No overflow clipping here: the editor toolbar is positioned against the
    top edge and gets cut off by it. */
 #pad-wrap .image-container {
-  background: #f4f5f7 !important;
+  /* Matches the editor's own light canvas fill, so the pad is one white sheet
+     whether PIXI paints the fill or leaves it transparent. */
+  background: #ffffff !important;
 }
 
 #pad-wrap .empty {
@@ -267,7 +285,11 @@ footer,
 }
 
 #pad-wrap .block {
-  height: clamp(340px, 52vh, 520px) !important;
+  /* Square: the stroke is resized to 28x28, so a non-square pad would
+     stretch the digit away from what the models were trained on. */
+  height: auto !important;
+  aspect-ratio: 1 / 1 !important;
+  max-height: 62vh !important;
 }
 
 #pad-wrap .icon-button-wrapper.top-panel {
@@ -722,7 +744,7 @@ def create_demo(models, device):
                         transforms=(),
                         sources=(),
                         canvas_size=(360, 360),
-                        fixed_canvas=True,
+                        fixed_canvas=False,
                         # Stroke stays black on white: predict_digit inverts to MNIST polarity.
                         brush=gr.Brush(colors=["#000000"], default_color="#000000",
                                        color_mode="fixed", default_size=22),
