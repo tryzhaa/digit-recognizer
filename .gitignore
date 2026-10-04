@@ -7,3 +7,6 @@ submission.csv
 __pycache__/
 test_probs.pt
 submissions/
+.DS_Store
+*.log
+errors.png

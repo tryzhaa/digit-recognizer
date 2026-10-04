@@ -102,7 +102,10 @@ gradio-app {
 }
 
 .gradio-container {
-  max-width: 1120px !important;
+  /* 75% of the viewport on wide screens, but never narrower than the old
+     centered column, so small screens still use the width they have. */
+  width: 100% !important;
+  max-width: max(75vw, min(100%, 1120px)) !important;
   margin: 0 auto !important;
   padding: 0 16px 72px !important;
 }
@@ -261,6 +264,10 @@ footer,
    canvas rather than the dark well, where it would sit dark-on-dark. */
 #pad-wrap .image-container {
   position: relative !important;
+}
+
+#pad-wrap .block {
+  height: clamp(340px, 52vh, 520px) !important;
 }
 
 #pad-wrap .icon-button-wrapper.top-panel {
@@ -692,7 +699,7 @@ def create_demo(models, device):
 
     n_models = len(models) if models else 0
 
-    with gr.Blocks(title="Digit Recognizer") as demo:
+    with gr.Blocks(title="Digit Recognizer", fill_width=True) as demo:
         gr.HTML(
             f'<div id="masthead"><div class="hd-line">{MARK}'
             f'<h1>Handwritten digit recognizer</h1></div>'
