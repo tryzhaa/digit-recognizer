@@ -12,7 +12,9 @@ Kaggle gives 42,000 example images with the right answer, and 28,000 images with
 
 ### Try it live
 
-**[🎨 Draw a digit on HuggingFace Spaces](https://huggingface.co/spaces/tryzhaa/digit-recognizer)** — see the model's prediction in real-time.
+**[Draw a digit and watch it predict](https://digit-recognizer-x8cb.onrender.com)** — the model reads your stroke and reports its confidence across all ten classes.
+
+The demo is on a free instance that sleeps when idle, so the first load after a pause takes 50s or more.
 
 ### Error analysis
 
@@ -126,6 +128,6 @@ The instance is on Render's free plan, which shapes two things visitors notice:
 
 To make this project stand out:
 
-1. **Repository About**: Add description "99.7% accuracy MNIST classifier using CNN ensemble. Train, evaluate, and draw digits live on Hugging Face Spaces."
+1. **Repository About**: Add description "99.7% accuracy MNIST classifier using a CNN ensemble. Train, evaluate, and draw digits live in the browser."
 2. **Topics**: Add `pytorch`, `cnn`, `kaggle`, `ensemble`, `mnist`, `neural-network`
 3. **Pin this README** so visitors see the live demo link first
