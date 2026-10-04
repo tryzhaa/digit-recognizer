@@ -109,7 +109,13 @@ def create_demo(models, device):
     """Create and return Gradio interface."""
 
     def predict_fn(image):
-        return predict_digit(image, models, device)
+        try:
+            return predict_digit(image, models, device)
+        except Exception as e:
+            import traceback
+            msg = f"Error: {e}\n{traceback.format_exc()}"
+            print(msg)
+            return msg, {}
 
     with gr.Blocks(title="Digit Recognizer", theme=gr.themes.Soft()) as demo:
         gr.Markdown("# ✍️ Handwritten Digit Recognizer")
