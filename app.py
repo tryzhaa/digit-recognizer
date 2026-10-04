@@ -16,19 +16,27 @@ MEAN, STD = 0.1307, 0.3081
 
 def load_models(device='cpu'):
     """Load all trained models from models/ directory."""
+    from train import ARCHS
     model_files = sorted(glob.glob('models/full_*.pt'))
     if not model_files:
         model_files = sorted(glob.glob('models/*.pt'))
 
     if not model_files:
-        print("Warning: No trained models found. Using dummy model for demo.")
+        print("Warning: No trained models found.")
         return None
 
     models = []
     for path in model_files:
         try:
-            model = torch.load(path, map_location=device)
-            models.append(model.eval())
+            ck = torch.load(path, map_location=device)
+            if isinstance(ck, dict) and 'arch' in ck:
+                arch, state = ck['arch'], ck['state']
+            else:
+                arch, state = 'cnn', ck
+            model = ARCHS[arch]().to(device)
+            model.load_state_dict(state)
+            model.eval()
+            models.append(model)
         except Exception as e:
             print(f"Warning: Could not load {path}: {e}")
 
@@ -38,14 +46,27 @@ def load_models(device='cpu'):
 def predict_digit(image_array, models, device):
     """Predict digit from hand-drawn image."""
     if image_array is None:
-        return "No image provided", {}
+        return "Draw a digit first", {}
 
-    # Convert from PIL Image or numpy array (H, W, 3) to tensor
+    # Gradio 4.x Sketchpad returns a dict with 'composite' key
+    if isinstance(image_array, dict):
+        image_array = image_array.get('composite') or image_array.get('layers', [None])[0]
+    if image_array is None:
+        return "Draw a digit first", {}
+
+    # Convert RGBA or RGB numpy array (H, W, C) to grayscale float
     if isinstance(image_array, np.ndarray):
-        # Gradio gives numpy array (H, W, 3) with values 0-255
-        img = np.mean(image_array, axis=2) / 255.0  # Convert to grayscale
+        if image_array.ndim == 3 and image_array.shape[2] == 4:
+            # RGBA: use alpha channel as the digit mask (white bg, black stroke)
+            alpha = image_array[:, :, 3].astype(np.float32) / 255.0
+            img = alpha
+        elif image_array.ndim == 3:
+            img = np.mean(image_array[:, :, :3], axis=2).astype(np.float32) / 255.0
+            img = 1.0 - img  # invert: black digit on white bg → white digit on black
+        else:
+            img = image_array.astype(np.float32) / 255.0
     else:
-        img = image_array
+        img = np.array(image_array).astype(np.float32) / 255.0
 
     # Resize to 28x28 if needed
     if img.shape != (28, 28):
