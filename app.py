@@ -56,19 +56,12 @@ def predict_digit(image_array, models, device):
     if image_array is None:
         return "Draw a digit first", {}
 
-    # Convert RGBA or RGB numpy array (H, W, C) to grayscale float
-    if isinstance(image_array, np.ndarray):
-        if image_array.ndim == 3 and image_array.shape[2] == 4:
-            # RGBA: use alpha channel as the digit mask (white bg, black stroke)
-            alpha = image_array[:, :, 3].astype(np.float32) / 255.0
-            img = alpha
-        elif image_array.ndim == 3:
-            img = np.mean(image_array[:, :, :3], axis=2).astype(np.float32) / 255.0
-            img = 1.0 - img  # invert: black digit on white bg → white digit on black
-        else:
-            img = image_array.astype(np.float32) / 255.0
-    else:
-        img = np.array(image_array).astype(np.float32) / 255.0
+    # Convert to grayscale float, inverted to match MNIST (white digit on black bg)
+    if not isinstance(image_array, np.ndarray):
+        image_array = np.array(image_array)
+    # Use RGB channels regardless of whether RGBA or RGB
+    rgb = image_array[:, :, :3].astype(np.float32)
+    img = 1.0 - (np.mean(rgb, axis=2) / 255.0)  # invert: black stroke → white digit
 
     # Resize to 28x28 if needed
     if img.shape != (28, 28):
